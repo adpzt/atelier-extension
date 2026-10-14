@@ -30,10 +30,17 @@ Sur chaque Mac, une seule fois :
 curl -fsSL https://raw.githubusercontent.com/adpzt/atelier-extension/main/scripts/install-mac.sh | bash
 ```
 
-Le script installe l'extension dans `~/Library/Application Support/Atelier/extension` et ajoute une tâche
+Le script installe l'extension dans **`~/Extension Atelier`** (ton dossier personnel) et ajoute une tâche
 de fond qui récupère la dernière version toutes les 15 min. Il affiche ensuite la dernière étape à faire
-dans Chrome (charger le dossier, une seule fois). L'extension se recharge toute seule à chaque nouvelle
-version, dès que le panneau est fermé. **Le Mode développeur de Chrome doit rester activé.**
+dans Chrome ou **Brave** (charger ce dossier, une seule fois). L'extension se recharge toute seule à chaque
+nouvelle version, dès que le panneau est fermé. **Le Mode développeur doit rester activé.**
+
+Autre emplacement possible : `bash install-mac.sh "/chemin/du/dossier"`, mais **pas sur un disque externe** :
+macOS interdit aux tâches de fond d'y écrire, les mises à jour échoueraient. Pour l'avoir sous la main
+ailleurs, crée plutôt un raccourci : `ln -s ~/"Extension Atelier" "/chemin/Extension Atelier"`.
+
+Testé sur Chrome et Brave (mêmes résultats au pixel près, la protection anti-empreinte de Brave
+n'affecte pas l'extension).
 
 Publier une nouvelle version = pousser sur `main`. GitHub Actions build l'extension et la publie sur la
 branche `release` (version `0.2.<numéro de build>`, affichée à côté du logo dans le panneau).
