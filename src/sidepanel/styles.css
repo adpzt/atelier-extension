@@ -2013,3 +2013,7 @@ body:not([data-module='variants']) #variants-footer {
   color: var(--good);
 }
 
+
+.advanced .field + .field {
+  margin-top: 14px;
+}

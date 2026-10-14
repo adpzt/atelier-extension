@@ -88,6 +88,7 @@ export async function mountMedia(root: HTMLElement) {
   }
   const save = () => chrome.storage.local.set({ [KEY]: opts }).catch(() => undefined);
   let status: EngineStatus | null = null;
+  let checking = true;
   let analyzed: ProbeInfo[] = [];
   const jobs: Job[] = [];
 
@@ -188,6 +189,12 @@ export async function mountMedia(root: HTMLElement) {
 
   // ---------- Rendu ----------
   function renderStatus() {
+    if (checking && !status) {
+      statusBox.className = 'card engine';
+      statusBox.replaceChildren(h('span', { class: 'spinner spinner--sm' }), h('span', { class: 'muted' }, 'Vérification du moteur Médias…'));
+      work.hidden = true;
+      return;
+    }
     if (status) {
       statusBox.className = 'card engine engine--ok';
       statusBox.replaceChildren(icon('check', 14), h('span', {}, `Moteur prêt · yt-dlp ${status.ytdlp} · ffmpeg ${status.ffmpeg}`));
@@ -369,7 +376,10 @@ export async function mountMedia(root: HTMLElement) {
   }
 
   async function refreshStatus() {
+    checking = true;
+    renderStatus();
     status = await engineStatus();
+    checking = false;
     renderStatus();
   }
 

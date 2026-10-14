@@ -72,7 +72,7 @@ FFARCH=$([ "$ARCH" = "x86_64" ] && echo "x64" || echo "arm64")
 FFREL="https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1"
 for tool in ffmpeg ffprobe; do
   if [ ! -x "$BIN/$tool" ]; then
-    echo "→ Téléchargement de $tool…"
+    echo "→ Téléchargement de ${tool}…"
     curl -fsSL "$FFREL/$tool-darwin-$FFARCH.gz" | gunzip > "$BIN/$tool"
     chmod +x "$BIN/$tool"
   fi

@@ -141,6 +141,19 @@ def cmd_status(msg):
     return {"ytdlp": yt, "ffmpeg": ff, "dir": download_dir()}
 
 
+SITE_NAMES = {"Youtube": "YouTube", "YoutubeTab": "YouTube", "TikTok": "TikTok", "Instagram": "Instagram", "Twitter": "X", "Vimeo": "Vimeo", "Facebook": "Facebook", "Soundcloud": "SoundCloud", "Dailymotion": "Dailymotion", "Twitch": "Twitch"}
+
+
+def best_thumbnail(info):
+    """Miniature JPG ou PNG de préférence (affichage le plus fiable dans le panneau)."""
+    thumbs = [t for t in (info.get("thumbnails") or []) if t.get("url")]
+    good = [t for t in thumbs if re.search(r"\.(jpe?g|png)(\?|$)", t["url"], re.I)]
+    pick = (good or thumbs)
+    if pick:
+        return max(pick, key=lambda t: (t.get("width") or 0) * (t.get("height") or 0) or (t.get("preference") or 0))["url"]
+    return info.get("thumbnail")
+
+
 def cmd_probe(msg):
     r = run_quiet(base_args(msg.get("cookies")) + ["-J", msg["url"]], timeout=90)
     if r.returncode != 0:
@@ -156,8 +169,8 @@ def cmd_probe(msg):
         "title": info.get("title") or "Sans titre",
         "uploader": info.get("uploader") or info.get("channel") or "",
         "duration": info.get("duration"),
-        "thumbnail": info.get("thumbnail"),
-        "site": info.get("extractor_key") or info.get("extractor") or "",
+        "thumbnail": best_thumbnail(info),
+        "site": SITE_NAMES.get(info.get("extractor_key") or "", info.get("extractor_key") or info.get("extractor") or ""),
         "maxHeight": max(heights) if heights else (info.get("height") or None),
         "hasVideo": bool(heights) or bool(info.get("height")),
         "hasAudio": has_audio,
