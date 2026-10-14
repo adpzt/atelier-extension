@@ -6,8 +6,6 @@ import encodeWebp from '@jsquash/webp/encode';
 import encodeAvif from '@jsquash/avif/encode';
 import optimisePng from '@jsquash/oxipng/optimise';
 import { quantizeImage, indexedToImageData } from './quantize';
-import { composeImage } from './compose';
-import type { Compose } from './variants';
 import { GIFEncoder } from 'gifenc';
 import { FORMATS, qualityOf, usesTargetSize, type Settings } from './types';
 import { decodeJxl, encodeBmp, encodeIco, encodeJxl, encodePdf, encodeQoi, encodeSvg, encodeTiff, pngPreview } from './encoders';
@@ -177,9 +175,9 @@ async function encodeToTarget(img: ImageData, s: Settings): Promise<{ data: Enco
   return { ...smallest!, met: false };
 }
 
-export async function runPipeline(decoded: ImageData, s: Settings, compose?: Compose): Promise<PipelineOutput> {
+export async function runPipeline(decoded: ImageData, s: Settings): Promise<PipelineOutput> {
   const format = FORMATS[s.format];
-  let img = compose ? await composeImage(decoded, compose) : await resizeIfNeeded(decoded, s);
+  let img = await resizeIfNeeded(decoded, s);
   if (!format.alpha) img = flatten(img, s.background);
 
   let enc: Encoded;

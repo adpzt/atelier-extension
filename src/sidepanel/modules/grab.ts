@@ -188,7 +188,7 @@ export function mountGrab(root: HTMLElement, footer: HTMLElement) {
         return;
       }
       // Vidéo protégée par son domaine : le moteur local récupère l'image dans le meilleur flux.
-      if (!(await engineStatus())) throw new Error("Cette vidéo bloque la capture directe. Installe le moteur Médias (onglet Médias) pour la capturer quand même.");
+      if (!(await engineStatus())) throw new Error("Cette vidéo bloque la capture directe. Installe le moteur (onglet Lien) pour la capturer quand même.");
       captureStatus.textContent = 'Capture via le moteur local…';
       const bytes = await engine.frame(tab.url, r.time ?? 0, '');
       const blob = new Blob([bytes as BlobPart], { type: 'image/png' });

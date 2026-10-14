@@ -1,14 +1,13 @@
 # Kotak — la boîte à outils du DA (extension Chrome / Brave / Edge)
 
-Cinq modules dans un panneau latéral. Tout tourne sur ton ordinateur : sans IA, sans service payant, sans limite.
+Quatre modules dans un panneau latéral. Tout tourne sur ton ordinateur : sans IA, sans service payant, sans limite.
 
 | Module | Ce qu'il fait |
 |---|---|
 | **Convertir** | Tous formats → JPG, WebP, AVIF, PNG, GIF, JPEG XL, TIFF, PDF (+ PDF unique), BMP, ICO, SVG vectorisé, QOI. Compression en % ou **poids cible**, redimensionnement, lots, ZIP. Entrée : HEIC, PSD, TIFF, PDF, RAW, JPEG XL, SVG… |
-| **Décliner** | Un visuel → tous les formats réseaux sociaux (9:16, 4:5, 1:1, 1.91:1, 16:9, 2:3) et display IAB, point focal, ajustement par format, fond flou, **zones de sécurité** Instagram / TikTok / Shorts, export ZIP rangé |
 | **Couleurs** | Pipette **sur tout l'écran** (même hors du navigateur), HEX copié automatiquement sans #, RGB, CMJN, HSL, historique, nuancier **.ase** |
-| **Récupérer** | Toutes les images d'une page (meilleure résolution, SVG intégrés, fonds CSS…), **capture de page entière**, **image vidéo en résolution native** |
-| **Médias** | Colle un lien (YouTube, TikTok, Instagram, X, Vimeo…) → vidéo jusqu'en 4K/8K (H.264, HEVC, ProRes, original), audio MP3 / WAV 24 bits / AIFF / FLAC…, miniature, extraits |
+| **Scrap** | Toutes les images d'une page (meilleure résolution, SVG intégrés, fonds CSS…), **capture de page entière**, **image vidéo en résolution native** |
+| **Lien** | Colle un lien (YouTube, TikTok, Instagram, X, Vimeo…) → vidéo jusqu'en 4K/8K (H.264, HEVC, ProRes, original), audio MP3 / WAV 24 bits / AIFF / FLAC…, miniature. **Passage** de tel moment à tel moment (bouton ⏱ = position de la vidéo en cours, `?t=` / `start=` / `end=` des liens lus automatiquement) |
 
 ## Installer
 
@@ -26,7 +25,7 @@ irm https://raw.githubusercontent.com/adpzt/kotak/main/scripts/install-windows.p
 
 Le script installe :
 - l'extension dans **`~/Extension Kotak`** (Mac) ou **`%USERPROFILE%\Extension Kotak`** (Windows) ;
-- le **moteur Médias** (yt-dlp + ffmpeg, open source) : dans `~/Library/Application Support/Kotak` (Mac) ou `%LOCALAPPDATA%\Kotak` (Windows, avec un Python portable réservé à Kotak) ;
+- le **moteur Lien** (yt-dlp + ffmpeg, open source) : dans `~/Library/Application Support/Kotak` (Mac) ou `%LOCALAPPDATA%\Kotak` (Windows, avec un Python portable réservé à Kotak) ;
 - une tâche de fond qui récupère les nouvelles versions de Kotak toutes les 15 min, et de yt-dlp chaque jour.
 
 Puis, **une seule fois**, dans `chrome://extensions` (ou `brave://extensions`) : active le **Mode développeur**,
@@ -50,11 +49,11 @@ Développement : `npm install`, `npm run build`, puis charger `dist/` ; `npm run
 
 ```
 public/manifest.json          manifeste MV3 (clé fixe => même identifiant partout)
-public/host/kotak_host.py     moteur Médias (Native Messaging, Mac + Windows), livré avec l'extension
+public/host/kotak_host.py     moteur du module Lien (Native Messaging, Mac + Windows), livré avec l'extension
 src/background.ts             service worker : panneau, clic droit, mise à jour auto, presse-papier
 src/core/                     moteur d'images (décodage, encodage, déclinaisons) indépendant de l'interface
 src/sidepanel/                interface : nav.ts (onglets), modules/*.ts, components/ (convertisseur)
-src/lib/                      fichiers, couleurs (.ase), presse-papier, client du moteur Médias
+src/lib/                      fichiers, couleurs (.ase), presse-papier, client du moteur Lien
 scripts/install-mac.sh        installation Mac
 scripts/install-windows.ps1   installation Windows
 ```
@@ -64,7 +63,7 @@ scripts/install-windows.ps1   installation Windows
 - **RAW** : aperçu JPEG intégré par l'appareil (pleine résolution chez Canon et Nikon, parfois réduite ailleurs).
 - **PSD** : image aplatie, le fichier doit être enregistré avec « Maximiser la compatibilité ».
 - **CMJN** : conversion standard sans profil ICC, proche mais pas identique à Photoshop.
-- **Médias** : pour diffuser un contenu téléchargé, il faut en avoir les droits. Certains contenus demandent
+- **Lien** : pour diffuser un contenu téléchargé, il faut en avoir les droits. Certains contenus demandent
   ta session (choix « Session » dans le module). Sur Windows, les conversions H.264 / HEVC / ProRes sont
   logicielles (plus lentes que l'encodeur matériel du Mac).
 - Les pages internes du navigateur (chrome://, Web Store) ne peuvent pas être analysées ni capturées.

@@ -113,8 +113,6 @@ export interface ProcessRequest {
   sourceKey: string;
   source: Blob;
   settings: Settings;
-  /** Déclinaison : mise en page imposée (remplace le redimensionnement). */
-  compose?: import('./variants').Compose;
 }
 
 export interface ProcessResult {

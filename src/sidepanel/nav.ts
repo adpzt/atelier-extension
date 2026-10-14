@@ -1,13 +1,12 @@
 import { h, icon, type IconName } from './dom';
 
-export type ModuleId = 'convert' | 'variants' | 'colors' | 'grab' | 'media';
+export type ModuleId = 'convert' | 'colors' | 'grab' | 'media';
 
 const MODULES: { id: ModuleId; label: string; icon: IconName }[] = [
   { id: 'convert', label: 'Convertir', icon: 'convert' },
-  { id: 'variants', label: 'Décliner', icon: 'layers' },
   { id: 'colors', label: 'Couleurs', icon: 'pipette' },
-  { id: 'grab', label: 'Récupérer', icon: 'grab' },
-  { id: 'media', label: 'Médias', icon: 'film' },
+  { id: 'grab', label: 'Scrap', icon: 'grab' },
+  { id: 'media', label: 'Lien', icon: 'link' },
 ];
 
 const KEY = 'kotak.module';

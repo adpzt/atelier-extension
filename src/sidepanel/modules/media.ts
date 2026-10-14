@@ -71,6 +71,54 @@ function fmtDuration(s: number | null): string {
   return hh ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
 }
 
+/** « 90 », « 1:30 », « 1:02:03 », « 1m30s », « 90s » -> secondes (null si invalide). */
+export function parseTime(raw: string): number | null {
+  const v = raw.trim().toLowerCase().replace(',', '.');
+  if (!v) return null;
+  if (/^\d+(\.\d+)?$/.test(v)) return parseFloat(v);
+  const hms = /^(?:(\d+)h)?(?:(\d+)m(?:in)?)?(?:(\d+(?:\.\d+)?)s?)?$/.exec(v);
+  if (hms && (hms[1] || hms[2] || hms[3])) return (+(hms[1] ?? 0)) * 3600 + (+(hms[2] ?? 0)) * 60 + parseFloat(hms[3] ?? '0');
+  const parts = v.split(':');
+  if (parts.length >= 2 && parts.length <= 3 && parts.every((p) => /^\d+(\.\d+)?$/.test(p))) {
+    return parts.reduce((acc, p) => acc * 60 + parseFloat(p), 0);
+  }
+  return null;
+}
+
+export function fmtTime(sec: number): string {
+  const t = Math.max(0, Math.round(sec));
+  const hh = Math.floor(t / 3600);
+  const mm = Math.floor((t % 3600) / 60);
+  const ss = t % 60;
+  return hh ? `${hh}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
+}
+
+/** Moments indiqués dans un lien : ?t=90 / &t=1m30s (partage YouTube), ?start=30&end=45 (lecteur intégré YouTube), #t=90. */
+export function timesFromUrl(url: string): { start: number | null; end: number | null } {
+  try {
+    const u = new URL(url);
+    const hash = new URLSearchParams(u.hash.replace(/^#/, ''));
+    const pick = (...keys: string[]) => {
+      for (const k of keys) {
+        const v = u.searchParams.get(k) ?? hash.get(k);
+        if (v) return parseTime(v);
+      }
+      return null;
+    };
+    return { start: pick('t', 'start', 'time_continue'), end: pick('end') };
+  } catch {
+    return { start: null, end: null };
+  }
+}
+
+/** Injecté dans la page : position de la vidéo principale (en lecture, sinon la plus grande). */
+function currentVideoTime(): number | null {
+  const videos = Array.from(document.querySelectorAll('video')).filter((v) => v.duration > 0);
+  if (!videos.length) return null;
+  const score = (v: HTMLVideoElement) => (v.paused ? 0 : 1e9) + v.getBoundingClientRect().width * v.getBoundingClientRect().height;
+  return videos.sort((a, b) => score(b) - score(a))[0].currentTime;
+}
+
 function qualityLabel(height: number | null): string {
   if (!height) return '';
   if (height >= 4320) return '8K';
@@ -82,11 +130,12 @@ function qualityLabel(height: number | null): string {
 export async function mountMedia(root: HTMLElement) {
   let opts: Opts = { ...DEFAULTS };
   try {
-    opts = { ...DEFAULTS, ...((await chrome.storage.local.get(KEY))[KEY] as Partial<Opts> | undefined) };
+    opts = { ...DEFAULTS, ...((await chrome.storage.local.get(KEY))[KEY] as Partial<Opts> | undefined), start: '', end: '' };
   } catch {
     /* valeurs par défaut */
   }
-  const save = () => chrome.storage.local.set({ [KEY]: opts }).catch(() => undefined);
+  const save = () => chrome.storage.local.set({ [KEY]: { ...opts, start: '', end: '' } }).catch(() => undefined);
+  let clipOn = false;
   let status: EngineStatus | null = null;
   let checking = true;
   let analyzed: ProbeInfo[] = [];
@@ -140,14 +189,55 @@ export async function mountMedia(root: HTMLElement) {
   const audioSeg = seg<Opts['audio']>([['mp3', 'MP3'], ['wav', 'WAV'], ['aiff', 'AIFF'], ['m4a', 'M4A'], ['flac', 'FLAC'], ['opus', 'Opus']], () => opts.audio, (v) => (opts.audio = v));
   const bitrateSel = select<number>([[320, '320 kb/s (max)'], [256, '256 kb/s'], [192, '192 kb/s'], [128, '128 kb/s']], () => opts.bitrate, (v) => (opts.bitrate = v), 'Débit MP3');
   const depthSeg = seg<'16' | '24'>([['16', '16 bits'], ['24', '24 bits']], () => String(opts.depth) as '16' | '24', (v) => (opts.depth = Number(v) as 16 | 24));
-  const startInput = h('input', { type: 'text', class: 'input mono', placeholder: 'début 0:00', 'aria-label': 'Début' });
-  const endInput = h('input', { type: 'text', class: 'input mono', placeholder: 'fin 1:30', 'aria-label': 'Fin' });
+  const startInput = h('input', { type: 'text', class: 'input mono', placeholder: '0:00', 'aria-label': 'Début' });
+  const endInput = h('input', { type: 'text', class: 'input mono', placeholder: 'fin de la vidéo', 'aria-label': 'Fin' });
   for (const [el, k] of [[startInput, 'start'], [endInput, 'end']] as const) {
     el.addEventListener('input', () => {
       opts[k] = el.value.trim();
-      save();
+      el.classList.toggle('is-invalid', !!opts[k] && parseTime(opts[k]) === null);
+      renderOptions();
     });
   }
+  const nowBtn = (k: 'start' | 'end') => {
+    const b = h('button', { type: 'button', class: 'btn btn--ghost btn--sm clip-now', title: 'Prendre la position actuelle de la vidéo dans l\'onglet' }, '⏱');
+    b.addEventListener('click', async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+        if (!tab?.id) throw new Error();
+        const res = await chrome.scripting.executeScript({ target: { tabId: tab.id, allFrames: true }, func: currentVideoTime });
+        const t = res.map((r) => r.result as number | null).find((x) => typeof x === 'number');
+        if (typeof t !== 'number') throw new Error();
+        opts[k] = fmtTime(t);
+        renderOptions();
+      } catch {
+        toast("Aucune vidéo en lecture dans l'onglet actuel", 'error');
+      }
+    });
+    return b;
+  };
+  const clipToggle = h('input', { type: 'checkbox' });
+  clipToggle.addEventListener('change', () => {
+    clipOn = clipToggle.checked;
+    renderOptions();
+  });
+  const clipHint = h('p', { class: 'field__hint' });
+  const clipRow = h(
+    'div',
+    { class: 'stack clip' },
+    h('div', { class: 'clip__row' },
+      h('label', { class: 'clip__label' }, 'Début'), startInput, nowBtn('start'),
+    ),
+    h('div', { class: 'clip__row' },
+      h('label', { class: 'clip__label' }, 'Fin'), endInput, nowBtn('end'),
+    ),
+    clipHint,
+  );
+  const clipBlock = h(
+    'div',
+    { class: 'field' },
+    h('label', { class: 'check' }, clipToggle, h('span', { class: 'check__box' }, icon('check', 12)), h('span', {}, 'Seulement un passage (de tel moment à tel moment)')),
+    clipRow,
+  );
   const cookiesSel = select<string>(BROWSERS, () => opts.cookies, (v) => (opts.cookies = v), 'Session');
   const dirLabel = h('span', { class: 'mono ellipsis dir-label' });
   const dirBtn = h('button', { type: 'button', class: 'btn btn--ghost btn--sm' }, icon('folder', 14), 'Changer…');
@@ -170,9 +260,9 @@ export async function mountMedia(root: HTMLElement) {
     modeSeg.el,
     videoBlock,
     audioBlock,
+    clipBlock,
     h('details', { class: 'advanced' },
-      h('summary', {}, 'Extrait, session, dossier'),
-      field('Seulement un extrait (optionnel)', h('div', { class: 'row' }, startInput, h('span', { class: 'muted' }, '→'), endInput)),
+      h('summary', {}, 'Session et dossier'),
       field('Session (contenus privés, Instagram, YouTube restreint)', cookiesSel.el, h('p', { class: 'field__hint' }, 'Utilise ta connexion du navigateur choisi. macOS peut demander l\'accès au trousseau la première fois.')),
       field('Dossier', h('div', { class: 'row' }, dirLabel, dirBtn)),
     ),
@@ -191,7 +281,7 @@ export async function mountMedia(root: HTMLElement) {
   function renderStatus() {
     if (checking && !status) {
       statusBox.className = 'card engine';
-      statusBox.replaceChildren(h('span', { class: 'spinner spinner--sm' }), h('span', { class: 'muted' }, 'Vérification du moteur Médias…'));
+      statusBox.replaceChildren(h('span', { class: 'spinner spinner--sm' }), h('span', { class: 'muted' }, 'Vérification du moteur…'));
       work.hidden = true;
       return;
     }
@@ -205,7 +295,7 @@ export async function mountMedia(root: HTMLElement) {
       const err = engineError();
       const detail = err && !/not found/i.test(err) ? [h('p', { class: 'field__hint' }, `Détail : ${err}`)] : [];
       statusBox.replaceChildren(
-        h('div', { class: 'engine__title' }, icon('alert', 15), h('strong', {}, 'Moteur Médias non installé')),
+        h('div', { class: 'engine__title' }, icon('alert', 15), h('strong', {}, 'Moteur non installé')),
         h('p', {}, `Les téléchargements passent par yt-dlp et ffmpeg (gratuits, open source) installés sur ton ordinateur. Lance une fois cette commande dans ${WINDOWS ? 'PowerShell' : 'le Terminal'}, puis rouvre le panneau :`),
         h('pre', { class: 'mono engine__cmd' }, WINDOWS
           ? 'irm https://raw.githubusercontent.com/adpzt/kotak/main/scripts/install-windows.ps1 | iex'
@@ -225,8 +315,14 @@ export async function mountMedia(root: HTMLElement) {
     bitrateSel.sync();
     depthSeg.sync();
     cookiesSel.sync();
-    startInput.value = opts.start;
-    endInput.value = opts.end;
+    if (document.activeElement !== startInput) startInput.value = opts.start;
+    if (document.activeElement !== endInput) endInput.value = opts.end;
+    clipToggle.checked = clipOn;
+    clipRow.hidden = !clipOn;
+    clipBlock.hidden = opts.mode === 'image';
+    const dur = analyzed.length === 1 ? analyzed[0].duration : null;
+    clipHint.textContent = `${dur ? `Durée totale : ${fmtTime(dur)}. ` : ''}Formats acceptés : 90 · 1:30 · 1:02:03 · 1m30s. ⏱ reprend la position de la vidéo en cours dans l'onglet.`;
+    const clip = clipLabel();
     cookiesSel.el.value = opts.cookies;
     videoBlock.hidden = opts.mode !== 'video';
     audioBlock.hidden = opts.mode !== 'audio';
@@ -239,8 +335,18 @@ export async function mountMedia(root: HTMLElement) {
         : opts.codec === 'prores'
           ? 'Toujours en .mov, son en PCM. Idéal pour le montage, environ 10× plus lourd.'
           : 'Converti avec l\'encodeur matériel du Mac (rapide).';
-    (dlBtn.lastElementChild as HTMLElement).textContent = analyzed.length > 1 ? `Télécharger les ${analyzed.length}` : 'Télécharger';
+    (dlBtn.lastElementChild as HTMLElement).textContent =
+      (analyzed.length > 1 ? `Télécharger les ${analyzed.length}` : 'Télécharger') + (clip && opts.mode !== 'image' ? ` · passage ${clip}` : '');
     dlBtn.disabled = analyzed.length === 0;
+  }
+
+  /** « 1:30 → 2:00 » si un passage valide est demandé, sinon null. */
+  function clipLabel(): string | null {
+    if (!clipOn) return null;
+    const a = parseTime(opts.start);
+    const b = parseTime(opts.end);
+    if (a === null && b === null) return null;
+    return `${fmtTime(a ?? 0)} → ${b === null ? 'fin' : fmtTime(b)}`;
   }
 
   function renderResults(errors: string[]) {
@@ -282,20 +388,40 @@ export async function mountMedia(root: HTMLElement) {
     // Liens redirigés (URL finale différente) : on garde aussi ceux non appariés.
     for (const f of found) if (!analyzed.includes(f)) analyzed.push(f);
     analyzeBtn.disabled = false;
+    // Lien avec un moment (?t=, start=/end= du lecteur intégré) : on pré-remplit le passage.
+    const times = urls.map(timesFromUrl).find((t) => t.start !== null || t.end !== null);
+    if (times && urls.length === 1) {
+      clipOn = true;
+      opts.start = times.start !== null ? fmtTime(times.start) : '';
+      opts.end = times.end !== null ? fmtTime(times.end) : '';
+      toast(`Passage repris du lien : ${clipLabel()}`, 'info', 3500);
+    }
     renderResults(errors);
     renderOptions();
   }
 
   function startAll() {
-    for (const info of analyzed) startJob(info);
+    let start = '';
+    let end = '';
+    if (clipOn && opts.mode !== 'image') {
+      const a = opts.start ? parseTime(opts.start) : 0;
+      const b = opts.end ? parseTime(opts.end) : null;
+      const dur = analyzed.length === 1 ? analyzed[0].duration : null;
+      if (a === null || (opts.end && b === null)) return toast('Moment invalide : utilise par exemple 1:30 ou 90', 'error');
+      if (b !== null && b <= a) return toast('La fin doit être après le début', 'error');
+      if (dur && a >= dur) return toast(`Le début dépasse la durée de la vidéo (${fmtTime(dur)})`, 'error');
+      start = String(a);
+      end = b === null ? '' : String(b);
+    }
+    for (const info of analyzed) startJob(info, start, end);
     analyzed = [];
     links.value = '';
     results.replaceChildren();
     renderOptions();
   }
 
-  function startJob(info: ProbeInfo) {
-    const job: Job = { key: `j${jobs.length + 1}`, info, opts: { ...opts }, requestId: null, state: 'running', event: { type: 'stage', stage: 'Préparation' } };
+  function startJob(info: ProbeInfo, start: string, end: string) {
+    const job: Job = { key: `j${jobs.length + 1}`, info, opts: { ...opts, start, end }, requestId: null, state: 'running', event: { type: 'stage', stage: 'Préparation' } };
     jobs.unshift(job);
     const req = engine.download({ url: info.url, ...job.opts }, (e) => {
       job.event = { ...job.event, ...e };
@@ -327,7 +453,8 @@ export async function mountMedia(root: HTMLElement) {
   function renderJob(job: Job) {
     if (!job.el) return renderQueue();
     const e = job.event;
-    const label = job.opts.mode === 'audio' ? job.opts.audio.toUpperCase() : job.opts.mode === 'image' ? 'Image' : `${job.opts.codec === 'prores' ? 'MOV' : job.opts.container.toUpperCase()} ${job.opts.quality ? qualityLabel(job.opts.quality) : 'max'}`;
+    const passage = job.opts.start || job.opts.end ? ` · ${fmtTime(+job.opts.start || 0)}→${job.opts.end ? fmtTime(+job.opts.end) : 'fin'}` : '';
+    const label = (job.opts.mode === 'audio' ? job.opts.audio.toUpperCase() : job.opts.mode === 'image' ? 'Image' : `${job.opts.codec === 'prores' ? 'MOV' : job.opts.container.toUpperCase()} ${job.opts.quality ? qualityLabel(job.opts.quality) : 'max'}`) + passage;
     const actions: Node[] = [];
     if (job.state === 'running') {
       const stop = h('button', { type: 'button', class: 'icon-btn icon-btn--sm', title: 'Annuler' }, icon('stop', 13));

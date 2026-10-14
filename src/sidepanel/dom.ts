@@ -62,7 +62,6 @@ export const ICONS = {
   external: s('<path d="M14 4h6v6"/><path d="M10 14 20 4"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/>'),
   send: s('<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>'),
   refresh: s('<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>'),
-  layers: s('<rect x="3" y="7" width="10" height="14" rx="1.5"/><rect x="9" y="3" width="12" height="8" rx="1.5"/><rect x="15" y="13" width="6" height="8" rx="1.5"/>'),
   film: s('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4"/>'),
   camera: s('<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13.5" r="3.5"/>'),
   page: s('<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M9 6h6M9 10h6M9 14h4"/><path d="M12 22v-3"/>'),
