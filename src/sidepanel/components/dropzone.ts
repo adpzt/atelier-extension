@@ -1,0 +1,226 @@
+import { h, icon } from '../dom';
+import { store } from '../store';
+import { toast } from './toast';
+import { INBOX_KEY, type InboxEntry } from '../../lib/inbox';
+
+const IMAGE_EXT = /\.(png|jpe?g|jfif|webp|avif|gif|bmp|ico|svgz?)$/i;
+const MIME_EXT: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/avif': 'avif',
+  'image/gif': 'gif',
+  'image/svg+xml': 'svg',
+  'image/bmp': 'bmp',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+};
+
+type NamedBlob = { blob: Blob; name: string };
+
+function looksLikeImage(f: File): boolean {
+  return f.type.startsWith('image/') || IMAGE_EXT.test(f.name);
+}
+
+async function addAndReport(files: NamedBlob[]) {
+  if (!files.length) return;
+  const errors = await store.addFiles(files);
+  if (errors.length) {
+    const more = errors.length > 2 ? ` (+${errors.length - 2})` : '';
+    toast(`Ignoré : ${errors.slice(0, 2).join(' · ')}${more}`, 'error', 6000);
+  }
+}
+
+// ---------- Glisser-déposer (dossiers compris) ----------
+
+function readEntry(entry: FileSystemEntry): Promise<File[]> {
+  if (entry.isFile) {
+    return new Promise((res) => (entry as FileSystemFileEntry).file((f) => res([f]), () => res([])));
+  }
+  if (entry.isDirectory) {
+    const reader = (entry as FileSystemDirectoryEntry).createReader();
+    return new Promise((res) => {
+      const all: FileSystemEntry[] = [];
+      const next = () =>
+        reader.readEntries(async (batch) => {
+          if (batch.length) {
+            all.push(...batch);
+            next();
+          } else {
+            const nested = await Promise.all(all.map(readEntry));
+            res(nested.flat());
+          }
+        }, () => res([]));
+      next();
+    });
+  }
+  return Promise.resolve([]);
+}
+
+async function filesFromDataTransfer(dt: DataTransfer): Promise<File[]> {
+  const entries = Array.from(dt.items)
+    .map((it) => (it.kind === 'file' ? it.webkitGetAsEntry?.() : null))
+    .filter((e): e is FileSystemEntry => !!e);
+  if (entries.length) return (await Promise.all(entries.map(readEntry))).flat();
+  return Array.from(dt.files);
+}
+
+/** Image glissée depuis une page web : on récupère son URL. */
+function urlFromDataTransfer(dt: DataTransfer): string | null {
+  const html = dt.getData('text/html');
+  const m = html && /<img[^>]+src=["']([^"']+)["']/i.exec(html);
+  if (m) return m[1].replace(/&amp;/g, '&');
+  const uri = dt.getData('text/uri-list').split('\n').find((l) => l && !l.startsWith('#'));
+  return uri?.trim() || null;
+}
+
+// ---------- Images depuis une URL (clic droit, glisser depuis le web) ----------
+
+function nameFromUrl(url: string, type: string): string {
+  let stem = 'image-web';
+  try {
+    if (!url.startsWith('data:')) {
+      const last = decodeURIComponent(new URL(url).pathname.split('/').filter(Boolean).pop() ?? '');
+      if (last) stem = last;
+    }
+  } catch {
+    /* URL exotique : nom par défaut */
+  }
+  if (IMAGE_EXT.test(stem)) return stem;
+  const ext = MIME_EXT[type] ?? 'png';
+  return `${stem.replace(/\.[^.]*$/, '')}.${ext}`;
+}
+
+export async function addFromUrl(url: string) {
+  try {
+    if (url.startsWith('blob:')) throw new Error("image protégée par la page (blob)");
+    const res = await fetch(url, { credentials: 'include' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/') && !IMAGE_EXT.test(url)) throw new Error("ce n'est pas une image");
+    await addAndReport([{ blob, name: nameFromUrl(url, blob.type) }]);
+  } catch (e) {
+    toast(`Impossible de récupérer l'image : ${e instanceof Error ? e.message : e}`, 'error', 6000);
+  }
+}
+
+let draining = false;
+
+async function drainInbox() {
+  if (!chrome?.storage?.session || draining) return;
+  draining = true;
+  try {
+    const r = await chrome.storage.session.get(INBOX_KEY);
+    const inbox = (r[INBOX_KEY] as InboxEntry[] | undefined) ?? [];
+    if (!inbox.length) return;
+    await chrome.storage.session.set({ [INBOX_KEY]: [] });
+    for (const entry of inbox) await addFromUrl(entry.url);
+  } finally {
+    draining = false;
+  }
+  // Des images ont pu arriver pendant le traitement.
+  const again = await chrome.storage.session.get(INBOX_KEY);
+  if ((again[INBOX_KEY] as InboxEntry[] | undefined)?.length) drainInbox();
+}
+
+// ---------- Montage ----------
+
+export function mountDropzone(root: HTMLElement) {
+  const input = h('input', { type: 'file', multiple: true, accept: 'image/*,.svg,.svgz,.ico', hidden: true });
+  input.addEventListener('change', () => {
+    const files = Array.from(input.files ?? []).filter(looksLikeImage);
+    addAndReport(files.map((f) => ({ blob: f, name: f.name })));
+    input.value = '';
+  });
+  const browse = () => input.click();
+
+  const hero = h(
+    'button',
+    { class: 'drop-hero', type: 'button', onclick: browse },
+    h('span', { class: 'drop-hero__icon' }, icon('upload', 26)),
+    h('span', { class: 'drop-hero__title' }, 'Glisse tes images ici'),
+    h('span', { class: 'drop-hero__sub' }, 'ou ', h('u', {}, 'parcours'), ', colle avec ', h('kbd', {}, '⌘V'), ', ou clic droit sur une image du web'),
+    h('span', { class: 'drop-hero__formats' }, 'JPG · PNG · WebP · AVIF · GIF · SVG · BMP · ICO'),
+  );
+
+  const compact = h(
+    'button',
+    { class: 'drop-compact', type: 'button', onclick: browse },
+    icon('plus', 15),
+    h('span', {}, 'Ajouter des images'),
+    h('span', { class: 'drop-compact__hint' }, 'ou glisser / ⌘V'),
+  );
+
+  root.append(input, hero, compact);
+
+  const render = () => {
+    const empty = store.items.length === 0;
+    hero.hidden = !empty;
+    compact.hidden = empty;
+  };
+  store.on('items', render);
+  render();
+
+  // Dépôt n'importe où dans le panneau.
+  const overlay = h('div', { class: 'drop-overlay' }, h('div', { class: 'drop-overlay__inner' }, icon('upload', 28), h('span', {}, 'Dépose pour ajouter')));
+  document.body.append(overlay);
+  let depth = 0;
+  const hasPayload = (e: DragEvent) => {
+    const types = Array.from(e.dataTransfer?.types ?? []);
+    return types.includes('Files') || types.includes('text/uri-list');
+  };
+  document.addEventListener('dragenter', (e) => {
+    if (!hasPayload(e)) return;
+    depth++;
+    overlay.classList.add('is-active');
+  });
+  document.addEventListener('dragleave', () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) overlay.classList.remove('is-active');
+  });
+  document.addEventListener('dragover', (e) => {
+    if (hasPayload(e)) e.preventDefault();
+  });
+  document.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    depth = 0;
+    overlay.classList.remove('is-active');
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const files = (await filesFromDataTransfer(dt)).filter(looksLikeImage);
+    if (files.length) {
+      addAndReport(files.map((f) => ({ blob: f, name: f.name })));
+      return;
+    }
+    const url = urlFromDataTransfer(dt);
+    if (url) addFromUrl(url);
+  });
+
+  // Coller depuis le presse-papier.
+  document.addEventListener('paste', (e) => {
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
+    const files = Array.from(e.clipboardData?.files ?? []).filter(looksLikeImage);
+    if (files.length) {
+      e.preventDefault();
+      addAndReport(
+        files.map((f, i) => ({
+          blob: f,
+          name: f.name && f.name !== 'image.png' ? f.name : `presse-papier-${Date.now()}${i ? `-${i}` : ''}.${MIME_EXT[f.type] ?? 'png'}`,
+        })),
+      );
+      return;
+    }
+    const text = e.clipboardData?.getData('text/plain')?.trim();
+    if (text && /^(https?:|data:image\/)/i.test(text)) {
+      e.preventDefault();
+      addFromUrl(text);
+    }
+  });
+
+  // Images envoyées par le menu clic droit.
+  drainInbox();
+  chrome?.storage?.onChanged?.addListener((changes, area) => {
+    if (area === 'session' && (changes[INBOX_KEY]?.newValue as InboxEntry[] | undefined)?.length) drainInbox();
+  });
+}

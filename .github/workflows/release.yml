@@ -1,0 +1,45 @@
+# À chaque push sur main : build de l'extension et publication du dossier dist
+# sur la branche « release », que les Macs installés récupèrent automatiquement.
+name: Build & publication
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build (version 0.x.<numéro de build>)
+        run: npm run build
+        env:
+          ATELIER_BUILD: ${{ github.run_number }}
+
+      - name: Publication sur la branche release
+        run: |
+          cd dist
+          VERSION=$(jq -r .version manifest.json)
+          git init -q -b release
+          git add -A
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -qm "Atelier v$VERSION (${GITHUB_SHA::7})"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" release
+          echo "### Atelier v$VERSION publiée" >> "$GITHUB_STEP_SUMMARY"

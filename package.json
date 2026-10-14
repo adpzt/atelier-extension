@@ -1,0 +1,25 @@
+{
+  "name": "atelier-da",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jsquash/avif": "^2.1.1",
+    "@jsquash/jpeg": "^1.6.0",
+    "@jsquash/oxipng": "^2.3.0",
+    "@jsquash/resize": "^2.1.1",
+    "@jsquash/webp": "^1.5.0",
+    "fflate": "^0.8.3",
+    "gifenc": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4"
+  }
+}

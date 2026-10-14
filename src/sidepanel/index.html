@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Atelier</title>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <div class="brand__text">
+          <span class="brand__name">Atelier</span>
+          <span class="brand__module">Convertir &amp; compresser</span>
+        </div>
+      </div>
+      <div class="topbar__presets" id="presets"></div>
+    </header>
+
+    <main class="content">
+      <section class="dropzone" id="dropzone"></section>
+      <section class="card preview" id="preview" hidden></section>
+      <section class="card settings" id="settings">
+        <div class="section__head"><h2 class="section__title">Réglages</h2></div>
+      </section>
+      <div class="preset-form-host" id="preset-form"></div>
+      <section class="card queue-card" id="queue" hidden></section>
+    </main>
+
+    <footer class="footer" id="footer" hidden></footer>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
