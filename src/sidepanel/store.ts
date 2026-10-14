@@ -1,11 +1,15 @@
 import { WorkerPool } from '../core/pool';
 import { probe, rasterizeSvg } from '../core/source';
+import { normalize } from '../core/normalize';
+import type { SourceKind } from '../core/decoders';
 import { cloneSettings, type Settings } from '../core/types';
 import { saveSettings } from '../lib/storage';
 
 export interface ItemResult {
   blob: Blob;
   url: string;
+  /** URL affichable (= url, ou aperçu PNG pour TIFF, JPEG XL, PDF…). */
+  previewUrl: string;
   width: number;
   height: number;
   quality: number | null;
@@ -17,7 +21,10 @@ export interface Item {
   id: string;
   index: number;
   name: string;
-  file: Blob;
+  /** Source lisible par le navigateur (PNG sans perte pour les formats exotiques). */
+  source: Blob;
+  /** Format d'origine (HEIC, RAW, PSD…). */
+  kind: SourceKind;
   origSize: number;
   origW: number;
   origH: number;
@@ -83,41 +90,63 @@ class Store {
 
   // ---------- Ajout / suppression ----------
 
+  /** Nombre de fichiers en cours de lecture (formats lourds : RAW, PDF, PSD…). */
+  importing = 0;
+  importLabel = '';
+
   async addFiles(files: { blob: Blob; name: string }[]): Promise<string[]> {
     const errors: string[] = [];
-    const added: Item[] = [];
+    this.importing += files.length;
+    this.emit('items');
     for (const { blob, name } of files) {
       try {
-        const info = await probe(blob, name);
-        const item: Item = {
-          id: `i${++idCounter}`,
-          index: ++indexCounter,
-          name,
-          file: blob,
-          origSize: blob.size,
-          origW: info.width,
-          origH: info.height,
-          isSvg: info.isSvg,
-          thumbUrl: URL.createObjectURL(blob.type || !info.isSvg ? blob : new Blob([blob], { type: 'image/svg+xml' })),
-          override: null,
-          version: 1,
-          inflightVersion: null,
-          result: null,
-          error: null,
-          svgRaster: null,
-        };
-        added.push(item);
+        this.importLabel = name;
+        this.emit('items');
+        const sources = await normalize(blob, name, {
+          pdfDpi: this.global.pdfDpi,
+          onProgress: (msg) => {
+            this.importLabel = msg;
+            this.emit('items');
+          },
+        });
+        for (const src of sources) {
+          let { width, height } = src;
+          if (src.kind === 'svg') ({ width, height } = await probe(src.source, name));
+          const item: Item = {
+            id: `i${++idCounter}`,
+            index: ++indexCounter,
+            name: src.name,
+            source: src.source,
+            kind: src.kind,
+            // Pour un PDF multipage, le poids d'origine est réparti entre les pages.
+            origSize: Math.round(blob.size / sources.length),
+            origW: width,
+            origH: height,
+            isSvg: src.kind === 'svg',
+            thumbUrl: URL.createObjectURL(src.source),
+            override: null,
+            version: 1,
+            inflightVersion: null,
+            result: null,
+            error: null,
+            svgRaster: null,
+          };
+          this.items.push(item);
+          if (!this.selectedId) {
+            this.selectedId = item.id;
+            this.emit('selection');
+          }
+        }
       } catch (e) {
         errors.push(`${name} : ${e instanceof Error ? e.message : 'illisible'}`);
+      } finally {
+        this.importing--;
+        this.emit('items');
+        this.pump();
       }
     }
-    if (added.length) {
-      this.items.push(...added);
-      if (!this.selectedId) this.selectedId = added[0].id;
-      this.emit('items');
-      this.emit('selection');
-      this.pump();
-    }
+    this.importLabel = '';
+    this.emit('items');
     return errors;
   }
 
@@ -126,7 +155,7 @@ class Store {
     if (idx < 0) return;
     const [item] = this.items.splice(idx, 1);
     URL.revokeObjectURL(item.thumbUrl);
-    if (item.result) URL.revokeObjectURL(item.result.url);
+    revokeResult(item.result);
     if (this.selectedId === id) {
       this.selectedId = this.items[Math.min(idx, this.items.length - 1)]?.id ?? null;
       if (!this.selected?.override) this.scope = 'all';
@@ -138,7 +167,7 @@ class Store {
   clear() {
     for (const item of this.items) {
       URL.revokeObjectURL(item.thumbUrl);
-      if (item.result) URL.revokeObjectURL(item.result.url);
+      revokeResult(item.result);
     }
     this.items = [];
     this.selectedId = null;
@@ -258,12 +287,12 @@ class Store {
     this.emit('item', item.id);
 
     // Pour un SVG, la rastérisation est asynchrone : le slot n'est réservé qu'ensuite.
-    let source: Blob = item.file;
+    let source: Blob = item.source;
     let sourceKey = item.id;
     try {
       if (item.isSvg) {
         if (item.svgRaster?.scale !== settings.svgScale) {
-          item.svgRaster = { scale: settings.svgScale, blob: await rasterizeSvg(item.file, settings.svgScale) };
+          item.svgRaster = { scale: settings.svgScale, blob: await rasterizeSvg(item.source, settings.svgScale) };
         }
         source = item.svgRaster.blob;
         sourceKey = `${item.id}@${settings.svgScale}`;
@@ -276,10 +305,12 @@ class Store {
       const res = await pool.run({ sourceKey, source, settings });
       if (!this.items.includes(item)) return;
       if (item.version === version) {
-        if (item.result) URL.revokeObjectURL(item.result.url);
+        revokeResult(item.result);
+        const url = URL.createObjectURL(res.blob);
         item.result = {
           blob: res.blob,
-          url: URL.createObjectURL(res.blob),
+          url,
+          previewUrl: res.preview ? URL.createObjectURL(res.preview) : url,
           width: res.width,
           height: res.height,
           quality: res.quality,
@@ -295,6 +326,12 @@ class Store {
       this.pump();
     }
   }
+}
+
+function revokeResult(r: ItemResult | null) {
+  if (!r) return;
+  URL.revokeObjectURL(r.url);
+  if (r.previewUrl !== r.url) URL.revokeObjectURL(r.previewUrl);
 }
 
 export const store = new Store();

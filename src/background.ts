@@ -51,3 +51,25 @@ chrome.alarms.create(UPDATE_ALARM, { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === UPDATE_ALARM) checkForUpdate();
 });
+
+// ---------- Presse-papier (pipette hors de Chrome) ----------
+const OFFSCREEN_URL = 'offscreen/index.html';
+
+async function ensureOffscreen() {
+  const existing = await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT] });
+  if (existing.length) return;
+  await chrome.offscreen.createDocument({
+    url: OFFSCREEN_URL,
+    reasons: [chrome.offscreen.Reason.CLIPBOARD],
+    justification: 'Copier la couleur prélevée dans le presse-papier',
+  });
+}
+
+chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
+  if (msg?.type !== 'atelier-copy') return;
+  ensureOffscreen()
+    .then(() => chrome.runtime.sendMessage({ type: 'atelier-offscreen-copy', text: msg.text }))
+    .then((res) => reply(res ?? { ok: false }))
+    .catch(() => reply({ ok: false }));
+  return true; // réponse asynchrone
+});

@@ -120,7 +120,8 @@ export function mountCompare(root: HTMLElement) {
       stage.scrollTo(0, 0);
     }
     const res = item.result;
-    if (res && after.getAttribute('src') !== res.url) after.src = res.url;
+    if (res && after.getAttribute('src') !== res.previewUrl) after.src = res.previewUrl;
+    tagAfter.textContent = res && res.previewUrl !== res.url ? 'Converti (aperçu)' : 'Converti';
     if (!res) after.removeAttribute('src');
     after.hidden = !res;
     handle.hidden = !res;
@@ -155,9 +156,9 @@ export function mountCompare(root: HTMLElement) {
       h('span', { class: 'muted' }, formatBytes(item.origSize)),
       h('span', { class: 'arrow' }, '→'),
       h('strong', {}, formatBytes(res.blob.size)),
-      // Un SVG rastérisé est forcément « plus lourd » : la comparaison n'a pas de sens.
-      item.isSvg
-        ? h('span', { class: 'pill pill--neutral' }, 'vectoriel → pixels')
+      // Un SVG ou une page PDF rastérisés sont forcément « plus lourds » : la comparaison n'a pas de sens.
+      item.kind === 'svg' || item.kind === 'pdf'
+        ? h('span', { class: 'pill pill--neutral' }, item.kind === 'pdf' ? 'page PDF → image' : 'vectoriel → pixels')
         : h('span', { class: `pill ${pct >= 0 ? 'pill--good' : 'pill--bad'}` }, pct >= 0 ? `−${pct} %` : `+${-pct} %`),
     );
     const dims =
@@ -174,7 +175,7 @@ export function mountCompare(root: HTMLElement) {
     warn.hidden = !failedTarget;
     if (failedTarget) {
       warn.replaceChildren(icon('alert', 14), h('span', {}, `Objectif ${s.targetKB} Ko non atteint même en qualité minimale. Réduis la taille en pixels.`));
-    } else if (pct < 0 && !item.isSvg) {
+    } else if (pct < 0 && item.kind !== 'svg' && item.kind !== 'pdf') {
       warn.hidden = false;
       warn.replaceChildren(icon('alert', 14), h('span', {}, "Le fichier converti est plus lourd que l'original. Essaie un autre format ou plus de compression."));
     }

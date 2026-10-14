@@ -2,8 +2,11 @@ import { h, icon } from '../dom';
 import { store } from '../store';
 import { toast } from './toast';
 import { INBOX_KEY, type InboxEntry } from '../../lib/inbox';
+import { ACCEPTED_EXT } from '../../core/decoders';
 
-const IMAGE_EXT = /\.(png|jpe?g|jfif|webp|avif|gif|bmp|ico|svgz?)$/i;
+const IMAGE_EXT = ACCEPTED_EXT;
+const ACCEPT_LIST = '.svg,.svgz,.ico,.heic,.heif,.hif,.tif,.tiff,.psd,.psb,.jxl,.qoi,.tga,.pdf,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.dng,.raf,.orf,.rw2,.rwl,.pef,.ptx,.srw,.x3f,.3fr,.fff,.iiq,.mos,.mef,.mrw,.erf,.kdc,.dcr';
+
 const MIME_EXT: Record<string, string> = {
   'image/jpeg': 'jpg',
   'image/png': 'png',
@@ -19,7 +22,7 @@ const MIME_EXT: Record<string, string> = {
 type NamedBlob = { blob: Blob; name: string };
 
 function looksLikeImage(f: File): boolean {
-  return f.type.startsWith('image/') || IMAGE_EXT.test(f.name);
+  return f.type.startsWith('image/') || f.type === 'application/pdf' || IMAGE_EXT.test(f.name);
 }
 
 async function addAndReport(files: NamedBlob[]) {
@@ -97,7 +100,7 @@ export async function addFromUrl(url: string) {
     const res = await fetch(url, { credentials: 'include' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
-    if (!blob.type.startsWith('image/') && !IMAGE_EXT.test(url)) throw new Error("ce n'est pas une image");
+    if (!blob.type.startsWith('image/') && blob.type !== 'application/pdf' && !IMAGE_EXT.test(url)) throw new Error("ce n'est pas une image");
     await addAndReport([{ blob, name: nameFromUrl(url, blob.type) }]);
   } catch (e) {
     toast(`Impossible de récupérer l'image : ${e instanceof Error ? e.message : e}`, 'error', 6000);
@@ -126,7 +129,7 @@ async function drainInbox() {
 // ---------- Montage ----------
 
 export function mountDropzone(root: HTMLElement) {
-  const input = h('input', { type: 'file', multiple: true, accept: 'image/*,.svg,.svgz,.ico', hidden: true });
+  const input = h('input', { type: 'file', multiple: true, accept: 'image/*,application/pdf,' + ACCEPT_LIST, hidden: true });
   input.addEventListener('change', () => {
     const files = Array.from(input.files ?? []).filter(looksLikeImage);
     addAndReport(files.map((f) => ({ blob: f, name: f.name })));
@@ -140,7 +143,7 @@ export function mountDropzone(root: HTMLElement) {
     h('span', { class: 'drop-hero__icon' }, icon('upload', 26)),
     h('span', { class: 'drop-hero__title' }, 'Glisse tes images ici'),
     h('span', { class: 'drop-hero__sub' }, 'ou ', h('u', {}, 'parcours'), ', colle avec ', h('kbd', {}, '⌘V'), ', ou clic droit sur une image du web'),
-    h('span', { class: 'drop-hero__formats' }, 'JPG · PNG · WebP · AVIF · GIF · SVG · BMP · ICO'),
+    h('span', { class: 'drop-hero__formats' }, 'JPG · PNG · WebP · AVIF · GIF · SVG · HEIC · TIFF · PSD · PDF · RAW · JPEG XL · BMP · ICO · TGA · QOI'),
   );
 
   const compact = h(
@@ -151,12 +154,15 @@ export function mountDropzone(root: HTMLElement) {
     h('span', { class: 'drop-compact__hint' }, 'ou glisser / ⌘V'),
   );
 
-  root.append(input, hero, compact);
+  const importing = h('div', { class: 'importing' }, h('span', { class: 'spinner spinner--sm' }), h('span', { class: 'importing__label' }));
+  root.append(input, hero, compact, importing);
 
   const render = () => {
-    const empty = store.items.length === 0;
+    const empty = store.items.length === 0 && store.importing === 0;
     hero.hidden = !empty;
     compact.hidden = empty;
+    importing.hidden = store.importing === 0;
+    (importing.lastElementChild as HTMLElement).textContent = `Lecture${store.importing > 1 ? ` (${store.importing} fichiers)` : ''} — ${store.importLabel}`;
   };
   store.on('items', render);
   render();

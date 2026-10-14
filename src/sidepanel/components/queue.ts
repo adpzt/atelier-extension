@@ -64,8 +64,8 @@ function createRow(item: Item): Row {
         h('span', { class: 'muted' }, formatBytes(item.origSize)),
         h('span', { class: 'arrow' }, '→'),
         h('span', {}, formatBytes(res.blob.size)),
-        item.isSvg
-          ? h('span', { class: 'pill pill--sm pill--neutral' }, 'SVG')
+        item.kind === 'svg' || item.kind === 'pdf'
+          ? h('span', { class: 'pill pill--sm pill--neutral' }, item.kind === 'pdf' ? 'PDF' : 'SVG')
           : h('span', { class: `pill pill--sm ${pct >= 0 ? 'pill--good' : 'pill--bad'}` }, pct >= 0 ? `−${pct} %` : `+${-pct} %`),
         h('span', { class: 'muted tag' }, FORMATS[store.settingsFor(item).format].label),
       );

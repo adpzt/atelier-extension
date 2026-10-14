@@ -7,27 +7,34 @@
   </head>
   <body>
     <header class="topbar">
-      <div class="brand">
-        <span class="brand__mark" aria-hidden="true"></span>
-        <div class="brand__text">
+      <div class="topbar__row">
+        <div class="brand">
+          <span class="brand__mark" aria-hidden="true"></span>
           <span class="brand__name">Atelier</span>
-          <span class="brand__module">Convertir &amp; compresser</span>
+          <span class="brand__version" id="version"></span>
         </div>
       </div>
-      <div class="topbar__presets" id="presets"></div>
+      <nav class="tabs" id="tabs" role="tablist" aria-label="Modules"></nav>
     </header>
 
-    <main class="content">
+    <main class="content module" id="mod-convert" data-module="convert">
       <section class="dropzone" id="dropzone"></section>
       <section class="card preview" id="preview" hidden></section>
       <section class="card settings" id="settings">
-        <div class="section__head"><h2 class="section__title">Réglages</h2></div>
+        <div class="section__head">
+          <h2 class="section__title">Réglages</h2>
+          <div class="presets" id="presets"></div>
+        </div>
       </section>
       <div class="preset-form-host" id="preset-form"></div>
       <section class="card queue-card" id="queue" hidden></section>
     </main>
 
+    <main class="content module" id="mod-colors" data-module="colors" hidden></main>
+    <main class="content module" id="mod-grab" data-module="grab" hidden></main>
+
     <footer class="footer" id="footer" hidden></footer>
+    <footer class="footer" id="grab-footer" hidden></footer>
 
     <script type="module" src="./main.ts"></script>
   </body>

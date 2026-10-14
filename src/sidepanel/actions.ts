@@ -35,3 +35,20 @@ export async function downloadAll() {
     'success',
   );
 }
+
+/** Assemble les PDF convertis (une page par image) en un seul document. */
+export async function downloadMergedPdf() {
+  const ready = store.items.filter((i) => i.result && !store.isBusy(i) && i.result.blob.type === 'application/pdf');
+  if (!ready.length) return;
+  const { PDFDocument } = await import('pdf-lib');
+  const out = await PDFDocument.create();
+  out.setProducer('Atelier');
+  for (const item of ready) {
+    const src = await PDFDocument.load(await item.result!.blob.arrayBuffer());
+    const pages = await out.copyPages(src, src.getPageIndices());
+    pages.forEach((p) => out.addPage(p));
+  }
+  const bytes = await out.save();
+  await downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `atelier-${timestamp()}.pdf`);
+  toast(`PDF de ${ready.length} page${ready.length > 1 ? 's' : ''} exporté`, 'success');
+}

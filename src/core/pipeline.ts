@@ -8,9 +8,11 @@ import optimisePng from '@jsquash/oxipng/optimise';
 import { quantizeImage, indexedToImageData } from './quantize';
 import { GIFEncoder } from 'gifenc';
 import { FORMATS, qualityOf, usesTargetSize, type Settings } from './types';
+import { decodeJxl, encodeBmp, encodeIco, encodeJxl, encodePdf, encodeQoi, encodeSvg, encodeTiff, pngPreview } from './encoders';
 
 export interface PipelineOutput {
   blob: Blob;
+  preview: Blob | null;
   width: number;
   height: number;
   quality: number | null;
@@ -109,16 +111,29 @@ function encodeGif(img: ImageData, s: Settings): Uint8Array {
   return gif.bytes();
 }
 
-async function encodeLossy(img: ImageData, s: Settings, quality: number): Promise<ArrayBuffer> {
+interface Encoded {
+  data: ArrayBuffer | Uint8Array;
+  /** Image affichable quand le format ne l'est pas (ex. image intégrée au PDF). */
+  preview?: Blob;
+}
+
+async function encodeLossy(img: ImageData, s: Settings, quality: number): Promise<Encoded> {
+  const lossless = s.lossless && FORMATS[s.format].supportsLossless;
   switch (s.format) {
     case 'jpeg':
-      return encodeJpeg(img, { quality });
+      return { data: await encodeJpeg(img, { quality }) };
     case 'webp':
-      return s.lossless
-        ? encodeWebp(img, { lossless: 1, quality: 75, method: 4, exact: 0 })
-        : encodeWebp(img, { quality, method: 4 });
+      return {
+        data: lossless ? await encodeWebp(img, { lossless: 1, quality: 75, method: 4, exact: 0 }) : await encodeWebp(img, { quality, method: 4 }),
+      };
     case 'avif':
-      return s.lossless ? encodeAvif(img, { lossless: true, speed: 6 }) : encodeAvif(img, { quality: avifQuality(quality), speed: 6 });
+      return { data: lossless ? await encodeAvif(img, { lossless: true, speed: 6 }) : await encodeAvif(img, { quality: avifQuality(quality), speed: 6 }) };
+    case 'jxl':
+      return { data: await encodeJxl(img, lossless ? null : quality) };
+    case 'pdf': {
+      const r = await encodePdf(img, lossless ? null : quality);
+      return { data: r.pdf, preview: r.embedded };
+    }
     default:
       throw new Error(`Format inattendu : ${s.format}`);
   }
@@ -134,17 +149,17 @@ function avifQuality(q: number): number {
 }
 
 /** Meilleure qualité dont le poids reste <= cible (recherche dichotomique). */
-async function encodeToTarget(img: ImageData, s: Settings): Promise<{ data: ArrayBuffer; quality: number; met: boolean }> {
+async function encodeToTarget(img: ImageData, s: Settings): Promise<{ data: Encoded; quality: number; met: boolean }> {
   const target = Math.max(1, s.targetKB) * 1024;
   let lo = 1;
   let hi = 95;
-  let best: { data: ArrayBuffer; quality: number } | null = null;
-  let smallest: { data: ArrayBuffer; quality: number } | null = null;
+  let best: { data: Encoded; quality: number } | null = null;
+  let smallest: { data: Encoded; quality: number } | null = null;
   while (lo <= hi) {
     const mid = Math.round((lo + hi) / 2);
     const data = await encodeLossy(img, s, mid);
-    if (!smallest || data.byteLength < smallest.data.byteLength) smallest = { data, quality: mid };
-    if (data.byteLength <= target) {
+    if (!smallest || data.data.byteLength < smallest.data.data.byteLength) smallest = { data, quality: mid };
+    if (data.data.byteLength <= target) {
       best = { data, quality: mid };
       lo = mid + 1;
     } else {
@@ -155,7 +170,7 @@ async function encodeToTarget(img: ImageData, s: Settings): Promise<{ data: Arra
   // Même à qualité minimale on dépasse : on renvoie le plus léger obtenu.
   if (smallest && smallest.quality !== 1) {
     const data = await encodeLossy(img, s, 1);
-    if (data.byteLength < smallest.data.byteLength) smallest = { data, quality: 1 };
+    if (data.data.byteLength < smallest.data.data.byteLength) smallest = { data, quality: 1 };
   }
   return { ...smallest!, met: false };
 }
@@ -165,29 +180,59 @@ export async function runPipeline(decoded: ImageData, s: Settings): Promise<Pipe
   let img = await resizeIfNeeded(decoded, s);
   if (!format.alpha) img = flatten(img, s.background);
 
-  let data: ArrayBuffer | Uint8Array;
+  let enc: Encoded;
   let quality: number | null = null;
   let targetMet: boolean | null = null;
 
   if (usesTargetSize(s)) {
     const r = await encodeToTarget(img, s);
-    data = r.data;
+    enc = r.data;
     quality = r.quality;
     targetMet = r.met;
   } else if (format.lossy) {
     quality = s.lossless && format.supportsLossless ? null : qualityOf(s);
-    data = await encodeLossy(img, s, quality ?? 100);
-  } else if (s.format === 'png') {
-    data = await encodePng(img, s);
+    enc = await encodeLossy(img, s, quality ?? 100);
   } else {
-    data = encodeGif(img, s);
+    enc = { data: await encodeLossless(img, s) };
+  }
+
+  // Aperçu pour les formats que Chrome n'affiche pas.
+  let preview: Blob | null = enc.preview ?? null;
+  if (!format.displayable && !preview) {
+    preview = s.format === 'jxl' && quality !== null ? await pngPreview(await decodeJxl(toArrayBuffer(enc.data))) : await pngPreview(img);
   }
 
   return {
-    blob: new Blob([data as BlobPart], { type: format.mime }),
+    blob: new Blob([enc.data as BlobPart], { type: format.mime }),
+    preview,
     width: img.width,
     height: img.height,
     quality,
     targetMet,
   };
+}
+
+async function encodeLossless(img: ImageData, s: Settings): Promise<ArrayBuffer | Uint8Array> {
+  switch (s.format) {
+    case 'png':
+      return encodePng(img, s);
+    case 'gif':
+      return encodeGif(img, s);
+    case 'bmp':
+      return encodeBmp(img);
+    case 'tiff':
+      return encodeTiff(img);
+    case 'ico':
+      return encodeIco(img);
+    case 'qoi':
+      return encodeQoi(img);
+    case 'svg':
+      return new TextEncoder().encode(await encodeSvg(img, s.svgColors));
+    default:
+      throw new Error(`Format inattendu : ${s.format}`);
+  }
+}
+
+function toArrayBuffer(d: ArrayBuffer | Uint8Array): ArrayBuffer {
+  return d instanceof Uint8Array ? (d.buffer.slice(d.byteOffset, d.byteOffset + d.byteLength) as ArrayBuffer) : d;
 }

@@ -1,13 +1,25 @@
 import { h, icon } from '../dom';
 import { store } from '../store';
 import { formatBytes, savingPercent } from '../../lib/files';
-import { downloadAll } from '../actions';
+import { downloadAll, downloadMergedPdf } from '../actions';
 
 export function mountFooter(root: HTMLElement) {
   const summary = h('div', { class: 'footer__summary' });
   const progress = h('div', { class: 'footer__progress' }, h('div', { class: 'footer__bar' }));
   const zipBtn = h('button', { type: 'button', class: 'btn btn--primary' });
   const clearBtn = h('button', { type: 'button', class: 'btn btn--ghost', title: 'Vider la liste' }, icon('trash', 15));
+  const pdfBtn = h('button', { type: 'button', class: 'btn btn--ghost', title: 'Assembler toutes les images en un seul PDF' }, icon('zip', 15), h('span', {}, 'PDF unique'));
+  pdfBtn.addEventListener('click', async () => {
+    if (exporting) return;
+    exporting = true;
+    render();
+    try {
+      await downloadMergedPdf();
+    } finally {
+      exporting = false;
+      render();
+    }
+  });
   let exporting = false;
 
   zipBtn.addEventListener('click', async () => {
@@ -23,7 +35,7 @@ export function mountFooter(root: HTMLElement) {
   });
   clearBtn.addEventListener('click', () => store.clear());
 
-  root.append(progress, h('div', { class: 'footer__row' }, summary, h('div', { class: 'footer__actions' }, clearBtn, zipBtn)));
+  root.append(progress, h('div', { class: 'footer__row' }, summary, h('div', { class: 'footer__actions' }, clearBtn, pdfBtn, zipBtn)));
 
   function render() {
     const items = store.items;
@@ -57,6 +69,9 @@ export function mountFooter(root: HTMLElement) {
           : 'Télécharger';
     zipBtn.replaceChildren(icon(done.length > 1 ? 'zip' : 'download', 15), h('span', {}, label));
     zipBtn.disabled = exporting || busy > 0 || done.length === 0;
+    const pdfCount = done.filter((i) => i.result!.blob.type === 'application/pdf').length;
+    pdfBtn.hidden = pdfCount < 2;
+    pdfBtn.disabled = exporting || busy > 0;
   }
 
   store.on('items', render);

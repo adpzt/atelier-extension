@@ -1,6 +1,6 @@
 import { h, icon } from '../dom';
 import { store } from '../store';
-import { FORMATS, FORMAT_ORDER, clamp, qualityOf, type OutFormat, type ResizeMode, type Settings } from '../../core/types';
+import { FORMATS, FORMAT_ORDER, clamp, qualityOf, type FormatInfo, type OutFormat, type ResizeMode, type Settings } from '../../core/types';
 import { outputName } from '../../lib/files';
 
 type Option<T> = { value: T; label: string; title?: string };
@@ -38,9 +38,51 @@ function chips<T extends number>(values: T[], fmt: (v: T) => string, onPick: (v:
 function check(label: string, onChange: (v: boolean) => void) {
   const input = h('input', { type: 'checkbox' });
   input.addEventListener('change', () => onChange(input.checked));
-  const el = h('label', { class: 'check' }, input, h('span', { class: 'check__box' }, icon('check', 12)), h('span', {}, label));
-  return { el, input };
+  const text = h('span', {}, label);
+  const el = h('label', { class: 'check' }, input, h('span', { class: 'check__box' }, icon('check', 12)), text);
+  return { el, input, label: text };
 }
+
+/** Grille des formats de sortie, par usage. */
+function formatGrid(onPick: (v: OutFormat) => void) {
+  const groups: [FormatInfo['group'], string][] = [
+    ['web', 'Web'],
+    ['print', 'Impression'],
+    ['special', 'Spécial'],
+  ];
+  const buttons = new Map<OutFormat, HTMLButtonElement>();
+  const el = h(
+    'div',
+    { class: 'fmt-grid', role: 'radiogroup', 'aria-label': 'Format de sortie' },
+    groups.map(([g, label]) =>
+      h(
+        'div',
+        { class: 'fmt-group' },
+        h('span', { class: 'fmt-group__label' }, label),
+        h(
+          'div',
+          { class: 'fmt-row' },
+          FORMAT_ORDER.filter((f) => FORMATS[f].group === g).map((f) => {
+            const b = h('button', { type: 'button', class: 'fmt-btn', title: FORMATS[f].hint, onclick: () => onPick(f) }, FORMATS[f].label);
+            buttons.set(f, b);
+            return b;
+          }),
+        ),
+      ),
+    ),
+  );
+  return {
+    el,
+    set(v: OutFormat) {
+      buttons.forEach((b, f) => {
+        b.classList.toggle('is-on', f === v);
+        b.setAttribute('aria-checked', String(f === v));
+      });
+    },
+  };
+}
+
+const SVG_COLORS: Option<number>[] = [2, 4, 8, 16, 32, 64].map((v) => ({ value: v, label: `${v} couleurs${v === 16 ? ' (conseillé)' : ''}` }));
 
 const PNG_COLORS: Option<number>[] = [
   { value: 0, label: 'Toutes (sans perte)' },
@@ -64,13 +106,10 @@ export function mountSettings(root: HTMLElement) {
   const scopeRow = h('div', { class: 'scope' }, scope.el, resetBtn);
 
   // ----- Format -----
-  const format = segmented<OutFormat>(
-    'Format de sortie',
-    FORMAT_ORDER.map((f) => ({ value: f, label: FORMATS[f].label })),
-    (v) => update((s) => {
-      s.format = v;
-    }),
-  );
+  const format = formatGrid((v) => update((s) => {
+    s.format = v;
+  }));
+  const formatHint = h('div', { class: 'field__hint fmt-hint' });
 
   // ----- Compression -----
   const mode = segmented<'quality' | 'target'>('Mode', [
@@ -113,12 +152,14 @@ export function mountSettings(root: HTMLElement) {
   // ----- Couleurs (PNG / GIF) -----
   const colorsSelect = h('select', { class: 'input select', 'aria-label': 'Nombre de couleurs' });
   colorsSelect.addEventListener('change', () => update((s) => {
-    s.colors = Number(colorsSelect.value);
+    if (s.format === 'svg') s.svgColors = Number(colorsSelect.value);
+    else s.colors = Number(colorsSelect.value);
   }));
   const dither = check('Tramage (dégradés plus doux)', (v) => update((s) => {
     s.dithering = v;
   }));
-  const colorsBlock = field('Couleurs', h('div', { class: 'stack' }, colorsSelect, dither.el));
+  const svgTraceNote = h('div', { class: 'field__hint' }, 'Idéal pour logos, pictos et aplats. Moins de couleurs = tracé plus simple.');
+  const colorsBlock = field('Couleurs', h('div', { class: 'stack' }, colorsSelect, dither.el, svgTraceNote));
 
   // ----- Redimensionnement -----
   const resizeMode = h('select', { class: 'input select', 'aria-label': 'Redimensionnement' },
@@ -192,14 +233,20 @@ export function mountSettings(root: HTMLElement) {
   const namePreview = h('div', { class: 'field__hint mono' });
   const nameBlock = field('Nom des fichiers', h('div', { class: 'stack' }, nameInput, tokens, namePreview));
 
+  const pdfDpi = segmented<number>('Résolution PDF', [72, 150, 300].map((v) => ({ value: v, label: `${v} dpi` })), (v) => update((s) => {
+    s.pdfDpi = v;
+  }));
+  const pdfBlock = field('Import PDF : résolution des pages', pdfDpi.el, h('span', { class: 'field__hint' }, 'pour les prochains PDF importés'));
+
   const advanced = h('details', { class: 'advanced' },
     h('summary', {}, 'Nom des fichiers & options avancées'),
     nameBlock,
+    pdfBlock,
     h('p', { class: 'note' }, icon('check', 12), ' Métadonnées (EXIF, GPS…) toujours supprimées. Tout est traité sur ton ordinateur, rien n\'est envoyé en ligne.'),
   );
 
   const scopeHost = h('div', {});
-  root.append(scopeHost, field('Format', format.el), lossless.el, mode.el, qualityBlock, targetBlock, colorsBlock, resizeBlock, bgBlock, svgBlock, advanced);
+  root.append(scopeHost, field('Format', h('div', { class: 'stack' }, format.el, formatHint)), lossless.el, mode.el, qualityBlock, targetBlock, colorsBlock, resizeBlock, bgBlock, svgBlock, advanced);
   scopeHost.append(scopeRow);
 
   // ----- Synchronisation UI <- état -----
@@ -214,10 +261,12 @@ export function mountSettings(root: HTMLElement) {
     root.classList.toggle('is-item-scope', store.scope === 'item');
 
     format.set(s.format);
+    formatHint.textContent = f.hint;
 
     const isLossless = f.supportsLossless && s.lossless;
     lossless.el.hidden = !f.supportsLossless;
     lossless.input.checked = s.lossless;
+    lossless.label.textContent = s.format === 'pdf' ? 'Sans perte (image PNG dans le PDF)' : 'Sans perte';
 
     mode.el.hidden = !f.lossy || isLossless;
     mode.set(s.mode);
@@ -232,11 +281,14 @@ export function mountSettings(root: HTMLElement) {
     if (document.activeElement !== targetInput) targetInput.value = String(s.targetKB);
 
     colorsBlock.hidden = !f.supportsColors;
-    const colorOpts = s.format === 'gif' ? PNG_COLORS.slice(1) : PNG_COLORS;
+    const colorOpts = s.format === 'svg' ? SVG_COLORS : s.format === 'gif' ? PNG_COLORS.slice(1) : PNG_COLORS;
     colorsSelect.replaceChildren(...colorOpts.map((o) => h('option', { value: o.value }, o.label)));
-    colorsSelect.value = String(s.format === 'gif' && !s.colors ? 256 : s.colors);
+    const current = s.format === 'svg' ? s.svgColors : s.colors;
+    colorsSelect.value = String(colorOpts.some((o) => o.value === current) ? current : s.format === 'svg' ? 16 : 256);
     dither.input.checked = s.dithering;
-    dither.el.hidden = s.format === 'png' && !s.colors;
+    dither.el.hidden = (s.format === 'png' && !s.colors) || s.format === 'svg';
+    svgTraceNote.hidden = s.format !== 'svg';
+    pdfDpi.set(s.pdfDpi);
 
     resizeMode.value = s.resize.mode;
     resizeDetail.hidden = s.resize.mode === 'none';

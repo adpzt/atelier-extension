@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Atelier — boîte à outils DA",
   "short_name": "Atelier",
-  "description": "Convertis et compresse tes images en local, sans limite : JPG, PNG, WebP, AVIF, GIF, SVG.",
-  "version": "0.1.0",
+  "description": "Boîte à outils DA : conversion et compression d'images (tous formats), pipette couleur sur tout l'écran, récupération d'images. 100 % local.",
+  "version": "0.2.0",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icons/icon-16.png",
@@ -30,7 +30,10 @@
     "contextMenus",
     "downloads",
     "storage",
-    "alarms"
+    "alarms",
+    "scripting",
+    "offscreen",
+    "clipboardWrite"
   ],
   "host_permissions": [
     "<all_urls>"
