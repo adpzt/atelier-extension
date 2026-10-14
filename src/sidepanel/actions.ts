@@ -28,7 +28,7 @@ export async function downloadAll() {
   }
   const names = dedupeNames(ready.map(nameFor));
   const zip = await buildZip(ready.map((item, i) => ({ name: names[i], blob: item.result!.blob })));
-  await downloadBlob(zip, `atelier-${timestamp()}.zip`);
+  await downloadBlob(zip, `kotak-${timestamp()}.zip`);
   const skipped = store.items.length - ready.length;
   toast(
     skipped ? `${ready.length} images exportées (${skipped} ignorée${skipped > 1 ? 's' : ''} : en cours ou en erreur)` : `${ready.length} images exportées en ZIP`,
@@ -42,13 +42,13 @@ export async function downloadMergedPdf() {
   if (!ready.length) return;
   const { PDFDocument } = await import('pdf-lib');
   const out = await PDFDocument.create();
-  out.setProducer('Atelier');
+  out.setProducer('Kotak');
   for (const item of ready) {
     const src = await PDFDocument.load(await item.result!.blob.arrayBuffer());
     const pages = await out.copyPages(src, src.getPageIndices());
     pages.forEach((p) => out.addPage(p));
   }
   const bytes = await out.save();
-  await downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `atelier-${timestamp()}.pdf`);
+  await downloadBlob(new Blob([bytes as BlobPart], { type: 'application/pdf' }), `kotak-${timestamp()}.pdf`);
   toast(`PDF de ${ready.length} page${ready.length > 1 ? 's' : ''} exporté`, 'success');
 }

@@ -6,6 +6,8 @@ import { store } from '../store';
 import { buildZip, dedupeNames, downloadBlob, timestamp } from '../../lib/files';
 import { currentModule, onModuleChange, showModule } from '../nav';
 import { collectImages, type Found } from './grab-collect';
+import { captureFullPage, captureVideoFrame, dataUrlToBlob } from './capture';
+import { engine, engineStatus } from '../../lib/engine';
 
 interface GrabItem extends Found {
   key: string;
@@ -110,7 +112,93 @@ export function mountGrab(root: HTMLElement, footer: HTMLElement) {
 
   const grid = h('div', { class: 'grab-grid' });
   const emptyMsg = h('div', { class: 'grab-empty muted' });
-  root.append(head, filters, grid, emptyMsg);
+  // ---------- Captures ----------
+  const pageBtn = h('button', { type: 'button', class: 'btn btn--ghost btn--sm', title: 'Toute la page, en défilant (résolution Retina ×2)' }, icon('page', 14), 'Page entière');
+  const frameBtn = h('button', { type: 'button', class: 'btn btn--ghost btn--sm', title: 'Image de la vidéo en cours, à sa résolution native' }, icon('camera', 14), 'Image vidéo');
+  const captureStatus = h('span', { class: 'field__hint capture__status' });
+  const captureResult = h('div', { class: 'capture__result', hidden: true });
+  const captureCard = h(
+    'section',
+    { class: 'card capture' },
+    h('div', { class: 'row capture__row' }, h('span', { class: 'section__title' }, 'Capturer'), h('span', { class: 'spacer' }), pageBtn, frameBtn),
+    captureStatus,
+    captureResult,
+  );
+
+  async function activeTab() {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (!tab?.id || !tab.url || !/^(https?|file):/.test(tab.url)) throw new Error('Ouvre une page web (les pages internes du navigateur ne sont pas capturables)');
+    return tab as chrome.tabs.Tab & { id: number; url: string };
+  }
+
+  function showCapture(blob: Blob, w: number, hgt: number, label: string, base: string) {
+    const url = URL.createObjectURL(blob);
+    const name = `${base.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 60) || 'capture'}-${timestamp()}.png`;
+    const dl = h('button', { type: 'button', class: 'btn btn--ghost btn--sm' }, icon('download', 14), 'PNG');
+    dl.addEventListener('click', () => downloadBlob(blob, name));
+    const conv = h('button', { type: 'button', class: 'btn btn--primary btn--sm' }, icon('send', 14), 'Convertir');
+    conv.addEventListener('click', async () => {
+      showModule('convert');
+      await store.addFiles([{ blob, name }]);
+    });
+    const close = h('button', { type: 'button', class: 'icon-btn icon-btn--sm', title: 'Fermer' }, icon('x', 13));
+    close.addEventListener('click', () => {
+      captureResult.hidden = true;
+      URL.revokeObjectURL(url);
+    });
+    captureResult.replaceChildren(
+      h('img', { src: url, alt: label, class: 'capture__img' }),
+      h('div', { class: 'row capture__meta' }, h('div', {}, h('strong', {}, label), h('div', { class: 'muted' }, `${w} × ${hgt} px · ${formatSize(blob.size)}`)), h('span', { class: 'spacer' }), dl, conv, close),
+    );
+    captureResult.hidden = false;
+  }
+  const formatSize = (n: number) => (n > 1048576 ? `${(n / 1048576).toFixed(1).replace('.', ',')} Mo` : `${Math.round(n / 1024)} Ko`);
+
+  async function busy(btn: HTMLButtonElement, fn: () => Promise<void>) {
+    pageBtn.disabled = frameBtn.disabled = true;
+    btn.classList.add('is-busy');
+    try {
+      await fn();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : String(e), 'error', 7000);
+    } finally {
+      pageBtn.disabled = frameBtn.disabled = false;
+      btn.classList.remove('is-busy');
+      captureStatus.textContent = '';
+    }
+  }
+
+  pageBtn.addEventListener('click', () =>
+    busy(pageBtn, async () => {
+      const tab = await activeTab();
+      const r = await captureFullPage(tab.id, 2, (m) => (captureStatus.textContent = m));
+      showCapture(r.blob, r.width, r.height, 'Page entière', tab.title || 'page');
+      if (r.truncated) toast('Page très longue : capture limitée aux 30 000 premiers pixels', 'info', 6000);
+    }),
+  );
+
+  frameBtn.addEventListener('click', () =>
+    busy(frameBtn, async () => {
+      const tab = await activeTab();
+      captureStatus.textContent = 'Recherche de la vidéo…';
+      const r = await captureVideoFrame(tab.id);
+      if (r.error === 'none') throw new Error('Aucune vidéo en cours sur cette page');
+      if (r.dataUrl) {
+        showCapture(await dataUrlToBlob(r.dataUrl), r.width!, r.height!, 'Image vidéo', tab.title || 'video');
+        return;
+      }
+      // Vidéo protégée par son domaine : le moteur local récupère l'image dans le meilleur flux.
+      if (!(await engineStatus())) throw new Error("Cette vidéo bloque la capture directe. Installe le moteur Médias (onglet Médias) pour la capturer quand même.");
+      captureStatus.textContent = 'Capture via le moteur local…';
+      const bytes = await engine.frame(tab.url, r.time ?? 0, '');
+      const blob = new Blob([bytes as BlobPart], { type: 'image/png' });
+      const bmp = await createImageBitmap(blob);
+      showCapture(blob, bmp.width, bmp.height, 'Image vidéo (meilleur flux)', tab.title || 'video');
+      bmp.close();
+    }),
+  );
+
+  root.append(head, captureCard, filters, grid, emptyMsg);
 
   // ---------- Pied ----------
   const count = h('div', { class: 'footer__summary' });

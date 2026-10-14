@@ -3,14 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Atelier</title>
+    <title>Kotak</title>
   </head>
   <body>
     <header class="topbar">
       <div class="topbar__row">
         <div class="brand">
           <span class="brand__mark" aria-hidden="true"></span>
-          <span class="brand__name">Atelier</span>
+          <span class="brand__name">Kotak</span>
           <span class="brand__version" id="version"></span>
         </div>
       </div>
@@ -30,11 +30,14 @@
       <section class="card queue-card" id="queue" hidden></section>
     </main>
 
+    <main class="content module" id="mod-variants" data-module="variants" hidden></main>
     <main class="content module" id="mod-colors" data-module="colors" hidden></main>
     <main class="content module" id="mod-grab" data-module="grab" hidden></main>
+    <main class="content module" id="mod-media" data-module="media" hidden></main>
 
     <footer class="footer" id="footer" hidden></footer>
     <footer class="footer" id="grab-footer" hidden></footer>
+    <footer class="footer" id="variants-footer" hidden></footer>
 
     <script type="module" src="./main.ts"></script>
   </body>

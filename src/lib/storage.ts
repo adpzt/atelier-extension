@@ -28,7 +28,7 @@ export const BUILTIN_PRESETS: Preset[] = [
   preset('avif-max', 'AVIF ultra léger', { format: 'avif', compression: 45, mode: 'quality' }),
 ];
 
-const KEYS = { settings: 'atelier.settings', presets: 'atelier.presets' } as const;
+const KEYS = { settings: 'kotak.settings', presets: 'kotak.presets' } as const;
 
 function hasStorage(): boolean {
   return typeof chrome !== 'undefined' && !!chrome.storage?.local;

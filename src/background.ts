@@ -1,13 +1,13 @@
 // Service worker : ouverture du panneau latéral et menu clic droit sur les images.
 import { INBOX_KEY, type InboxEntry } from './lib/inbox';
 
-const MENU_ID = 'atelier-convert-image';
+const MENU_ID = 'kotak-convert-image';
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(console.error);
   chrome.contextMenus.create({
     id: MENU_ID,
-    title: 'Convertir / compresser avec Atelier',
+    title: 'Convertir / compresser avec Kotak',
     contexts: ['image'],
   });
 });
@@ -32,7 +32,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // Le script de mise à jour remplace les fichiers sur le disque. On compare la version
 // du manifeste sur le disque à celle chargée, et on recharge l'extension si elle a changé,
 // en attendant que le panneau soit fermé pour ne pas interrompre un travail en cours.
-const UPDATE_ALARM = 'atelier-update-check';
+const UPDATE_ALARM = 'kotak-update-check';
 
 async function checkForUpdate() {
   try {
@@ -66,9 +66,9 @@ async function ensureOffscreen() {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, reply) => {
-  if (msg?.type !== 'atelier-copy') return;
+  if (msg?.type !== 'kotak-copy') return;
   ensureOffscreen()
-    .then(() => chrome.runtime.sendMessage({ type: 'atelier-offscreen-copy', text: msg.text }))
+    .then(() => chrome.runtime.sendMessage({ type: 'kotak-offscreen-copy', text: msg.text }))
     .then((res) => reply(res ?? { ok: false }))
     .catch(() => reply({ ok: false }));
   return true; // réponse asynchrone

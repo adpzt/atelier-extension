@@ -2,13 +2,13 @@ import { defineConfig, type Plugin } from 'vite';
 import { resolve } from 'node:path';
 import { cpSync, readFileSync, writeFileSync } from 'node:fs';
 
-// En CI, ATELIER_BUILD (numéro de build GitHub) donne une version unique :
+// En CI, KOTAK_BUILD (numéro de build GitHub) donne une version unique :
 // 0.1.0 -> 0.1.<build>. C'est ce changement de version qui déclenche la mise à jour.
 function versionStamp(): Plugin {
   return {
-    name: 'atelier-version',
+    name: 'kotak-version',
     writeBundle(options) {
-      const build = process.env.ATELIER_BUILD;
+      const build = process.env.KOTAK_BUILD;
       if (!build || !options.dir) return;
       const pkg = JSON.parse(readFileSync(resolve(import.meta.dirname, 'package.json'), 'utf8'));
       const [major, minor] = String(pkg.version).split('.');
@@ -26,7 +26,7 @@ function versionStamp(): Plugin {
 // pdf.js a besoin de son worker, de ses polices/cmaps et de ses modules WASM à côté de l'extension.
 function copyPdfjsAssets(): Plugin {
   return {
-    name: 'atelier-pdfjs-assets',
+    name: 'kotak-pdfjs-assets',
     writeBundle(options) {
       if (!options.dir) return;
       const from = resolve(import.meta.dirname, 'node_modules/pdfjs-dist');

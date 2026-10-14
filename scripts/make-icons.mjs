@@ -52,25 +52,29 @@ const sdRoundBox = (x, y, cx, cy, hw, hh, r) => {
   const qy = Math.abs(y - cy) - hh + r;
   return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r;
 };
-const sdCircle = (x, y, cx, cy, r) => Math.hypot(x - cx, y - cy) - r;
 
-const BG_TOP = [27, 31, 23];
-const BG_BOT = [11, 12, 10];
-const LIME = [198, 242, 78];
-const WHITE = [244, 246, 239];
+// Spectre RVB (rouge → orange → jaune → vert → cyan → bleu → violet), en dégradé conique.
+const STOPS = [[255, 59, 92], [255, 138, 0], [255, 208, 0], [34, 208, 122], [0, 184, 255], [75, 92, 255], [194, 59, 255], [255, 59, 92]];
+const spectrum = (t) => {
+  const p = (((t % 1) + 1) % 1) * (STOPS.length - 1);
+  const i = Math.floor(p);
+  const f = p - i;
+  return STOPS[i].map((c, k) => c + (STOPS[i + 1][k] - c) * f);
+};
+const INNER = [14, 14, 19];
 
+// Kotak (« boîte ») : carré arrondi au contour spectre, intérieur sombre, petite boîte centrale.
 function shade(x, y, small) {
-  // retourne [r,g,b,a] pour un point
-  const bg = sdRoundBox(x, y, 0.5, 0.5, 0.5, 0.5, 0.22);
-  if (bg > 0) return [0, 0, 0, 0];
-  const t = (x + y) / 2;
-  let col = BG_TOP.map((c, i) => c + (BG_BOT[i] - c) * t);
-  const circle = sdCircle(x, y, 0.4, 0.4, small ? 0.22 : 0.2);
-  if (circle < 0) col = LIME;
-  const stroke = small ? 0.075 : 0.055;
-  const sq = Math.abs(sdRoundBox(x, y, 0.64, 0.64, 0.17, 0.17, 0.05)) - stroke / 2;
-  if (sq < 0) col = WHITE;
-  return [...col, 255];
+  const outer = sdRoundBox(x, y, 0.5, 0.5, 0.5, 0.5, 0.24);
+  if (outer > 0) return [0, 0, 0, 0];
+  const angle = Math.atan2(y - 0.5, x - 0.5) / (2 * Math.PI) + 0.5 + 0.15;
+  const ring = small ? 0.17 : 0.13;
+  const inner = sdRoundBox(x, y, 0.5, 0.5, 0.5 - ring, 0.5 - ring, 0.24 - ring * 0.8);
+  if (inner > 0) return [...spectrum(angle), 255];
+  // Petit carré central, lui aussi en spectre (inversé).
+  const core = sdRoundBox(x, y, 0.5, 0.5, small ? 0.13 : 0.11, small ? 0.13 : 0.11, 0.04);
+  if (core < 0) return [...spectrum(angle + 0.5), 255];
+  return [...INNER, 255];
 }
 
 for (const size of [16, 32, 48, 128]) {

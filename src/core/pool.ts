@@ -1,9 +1,11 @@
 import type { ProcessRequest, ProcessResult, Settings, WorkerResponse } from './types';
+import type { Compose } from './variants';
 
 export interface PoolTask {
   sourceKey: string;
   source: Blob;
   settings: Settings;
+  compose?: Compose;
 }
 
 interface Slot {
@@ -23,8 +25,10 @@ export class WorkerPool {
   private slots: Slot[] = [];
   private pending = new Map<number, Pending>();
   private nextJobId = 1;
+  private waiters: (() => void)[] = [];
 
   constructor(size = defaultPoolSize()) {
+    if (size < 1) size = 1;
     for (let i = 0; i < size; i++) {
       const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
       const slot: Slot = { worker, busy: false, lastKey: null };
@@ -36,6 +40,7 @@ export class WorkerPool {
             this.pending.delete(id);
             slot.busy = false;
             p.reject(new Error(e.message || 'Erreur du worker'));
+            this.waiters.shift()?.();
           }
         }
       };
@@ -49,6 +54,12 @@ export class WorkerPool {
 
   hasFreeSlot(): boolean {
     return this.slots.some((s) => !s.busy);
+  }
+
+  /** Comme run(), mais attend qu'un worker se libère (pour les gros lots). */
+  async runQueued(task: PoolTask): Promise<ProcessResult> {
+    while (!this.hasFreeSlot()) await new Promise<void>((r) => this.waiters.push(r));
+    return this.run(task);
   }
 
   run(task: PoolTask): Promise<ProcessResult> {
@@ -70,6 +81,7 @@ export class WorkerPool {
     if (!p) return;
     this.pending.delete(res.jobId);
     p.slot.busy = false;
+    this.waiters.shift()?.();
     if (res.type === 'done') p.resolve(res);
     else p.reject(new Error(res.message));
   }

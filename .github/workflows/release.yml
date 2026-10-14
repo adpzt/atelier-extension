@@ -30,7 +30,7 @@ jobs:
       - name: Build (version 0.x.<numéro de build>)
         run: npm run build
         env:
-          ATELIER_BUILD: ${{ github.run_number }}
+          KOTAK_BUILD: ${{ github.run_number }}
 
       - name: Publication sur la branche release
         run: |
@@ -40,6 +40,6 @@ jobs:
           git add -A
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -qm "Atelier v$VERSION (${GITHUB_SHA::7})"
+              commit -qm "Kotak v$VERSION (${GITHUB_SHA::7})"
           git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" release
-          echo "### Atelier v$VERSION publiée" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Kotak v$VERSION publiée" >> "$GITHUB_STEP_SUMMARY"

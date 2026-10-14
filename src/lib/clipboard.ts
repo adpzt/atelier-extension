@@ -9,7 +9,7 @@ export async function copyText(text: string): Promise<boolean> {
     return true;
   } catch {
     try {
-      const res = await chrome.runtime.sendMessage({ type: 'atelier-copy', text });
+      const res = await chrome.runtime.sendMessage({ type: 'kotak-copy', text });
       return !!res?.ok;
     } catch {
       return false;

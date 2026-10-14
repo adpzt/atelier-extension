@@ -31,7 +31,7 @@ export async function mountPresets(selectHost: HTMLElement, formHost: HTMLElemen
     const opt = (p: Preset) => h('option', { value: p.id }, p.name);
     select.replaceChildren(
       h('option', { value: '' }, 'Préréglages…'),
-      h('optgroup', { label: 'Atelier' }, BUILTIN_PRESETS.map(opt)),
+      h('optgroup', { label: 'Kotak' }, BUILTIN_PRESETS.map(opt)),
       ...(userPresets.length ? [h('optgroup', { label: 'Mes préréglages' }, userPresets.map(opt))] : []),
       h('option', { value: SAVE_VALUE }, '＋ Enregistrer les réglages actuels…'),
     );

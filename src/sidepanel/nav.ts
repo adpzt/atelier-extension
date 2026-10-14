@@ -1,14 +1,16 @@
 import { h, icon, type IconName } from './dom';
 
-export type ModuleId = 'convert' | 'colors' | 'grab';
+export type ModuleId = 'convert' | 'variants' | 'colors' | 'grab' | 'media';
 
 const MODULES: { id: ModuleId; label: string; icon: IconName }[] = [
   { id: 'convert', label: 'Convertir', icon: 'convert' },
+  { id: 'variants', label: 'Décliner', icon: 'layers' },
   { id: 'colors', label: 'Couleurs', icon: 'pipette' },
   { id: 'grab', label: 'Récupérer', icon: 'grab' },
+  { id: 'media', label: 'Médias', icon: 'film' },
 ];
 
-const KEY = 'atelier.module';
+const KEY = 'kotak.module';
 const listeners = new Set<(m: ModuleId) => void>();
 let current: ModuleId = 'convert';
 

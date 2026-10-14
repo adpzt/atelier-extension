@@ -3,6 +3,8 @@ import { store } from '../store';
 import { toast } from './toast';
 import { INBOX_KEY, type InboxEntry } from '../../lib/inbox';
 import { ACCEPTED_EXT } from '../../core/decoders';
+import { activeDropHandler } from '../drop';
+import { currentModule, showModule } from '../nav';
 
 const IMAGE_EXT = ACCEPTED_EXT;
 const ACCEPT_LIST = '.svg,.svgz,.ico,.heic,.heif,.hif,.tif,.tiff,.psd,.psb,.jxl,.qoi,.tga,.pdf,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.dng,.raf,.orf,.rw2,.rwl,.pef,.ptx,.srw,.x3f,.3fr,.fff,.iiq,.mos,.mef,.mrw,.erf,.kdc,.dcr';
@@ -25,8 +27,18 @@ function looksLikeImage(f: File): boolean {
   return f.type.startsWith('image/') || f.type === 'application/pdf' || IMAGE_EXT.test(f.name);
 }
 
-async function addAndReport(files: NamedBlob[]) {
+/**
+ * route = true : les fichiers vont au module affiché s'il sait les recevoir (ex. Déclinaisons),
+ * sinon au convertisseur (qu'on affiche).
+ */
+async function addAndReport(files: NamedBlob[], route = true) {
   if (!files.length) return;
+  const external = route ? activeDropHandler() : null;
+  if (external) {
+    external(files);
+    return;
+  }
+  if (currentModule() !== 'convert') showModule('convert');
   const errors = await store.addFiles(files);
   if (errors.length) {
     const more = errors.length > 2 ? ` (+${errors.length - 2})` : '';
@@ -94,14 +106,14 @@ function nameFromUrl(url: string, type: string): string {
   return `${stem.replace(/\.[^.]*$/, '')}.${ext}`;
 }
 
-export async function addFromUrl(url: string) {
+export async function addFromUrl(url: string, route = true) {
   try {
     if (url.startsWith('blob:')) throw new Error("image protégée par la page (blob)");
     const res = await fetch(url, { credentials: 'include' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const blob = await res.blob();
     if (!blob.type.startsWith('image/') && blob.type !== 'application/pdf' && !IMAGE_EXT.test(url)) throw new Error("ce n'est pas une image");
-    await addAndReport([{ blob, name: nameFromUrl(url, blob.type) }]);
+    await addAndReport([{ blob, name: nameFromUrl(url, blob.type) }], route);
   } catch (e) {
     toast(`Impossible de récupérer l'image : ${e instanceof Error ? e.message : e}`, 'error', 6000);
   }
@@ -117,7 +129,8 @@ async function drainInbox() {
     const inbox = (r[INBOX_KEY] as InboxEntry[] | undefined) ?? [];
     if (!inbox.length) return;
     await chrome.storage.session.set({ [INBOX_KEY]: [] });
-    for (const entry of inbox) await addFromUrl(entry.url);
+    // Clic droit « Convertir / compresser » : toujours vers le convertisseur.
+    for (const entry of inbox) await addFromUrl(entry.url, false);
   } finally {
     draining = false;
   }

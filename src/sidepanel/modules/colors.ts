@@ -12,7 +12,7 @@ interface Picked {
   ts: number;
 }
 
-const KEY = 'atelier.colors.history';
+const KEY = 'kotak.colors.history';
 const MAX = 64;
 
 interface EyeDropperCtor {
@@ -117,7 +117,7 @@ export async function mountColors(root: HTMLElement) {
 
   aseBtn.addEventListener('click', () => {
     const colors = history.map((p) => ({ name: p.hex, rgb: parseHex(p.hex)! }));
-    downloadBlob(buildAse(colors), `atelier-couleurs-${timestamp()}.ase`);
+    downloadBlob(buildAse(colors), `kotak-couleurs-${timestamp()}.ase`);
   });
   copyAllBtn.addEventListener('click', async () => {
     if (await copyText(history.map((p) => p.hex).join('\n'))) toast(`${history.length} codes copiés`, 'success', 2000);

@@ -116,8 +116,8 @@ export async function encodeTiff(img: ImageData): Promise<ArrayBuffer> {
 export async function encodePdf(img: ImageData, quality: number | null): Promise<{ pdf: Uint8Array; embedded: Blob }> {
   const { PDFDocument } = await import('pdf-lib');
   const doc = await PDFDocument.create();
-  doc.setProducer('Atelier');
-  doc.setCreator('Atelier');
+  doc.setProducer('Kotak');
+  doc.setCreator('Kotak');
   let image;
   let embedded: Blob;
   if (quality === null) {

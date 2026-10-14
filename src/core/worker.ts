@@ -28,7 +28,7 @@ self.onmessage = async (e: MessageEvent<ProcessRequest>) => {
   let res: WorkerResponse;
   try {
     const decoded = await getDecoded(req.sourceKey, req.source);
-    const out = await runPipeline(decoded, req.settings);
+    const out = await runPipeline(decoded, req.settings, req.compose);
     res = { type: 'done', jobId: req.jobId, ...out };
   } catch (err) {
     res = { type: 'error', jobId: req.jobId, message: err instanceof Error ? err.message : String(err) };

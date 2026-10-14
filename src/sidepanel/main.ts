@@ -10,6 +10,8 @@ import { mountPresets } from './components/presets';
 import { mountNav } from './nav';
 import { mountColors } from './modules/colors';
 import { mountGrab } from './modules/grab';
+import { mountVariants } from './modules/variants';
+import { mountMedia } from './modules/media';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -24,6 +26,8 @@ async function boot() {
   await mountPresets($('presets'), $('preset-form'));
   await mountColors($('mod-colors'));
   mountGrab($('mod-grab'), $('grab-footer'));
+  await mountVariants($('mod-variants'), $('variants-footer'));
+  await mountMedia($('mod-media'));
   mountNav($('tabs'));
   document.body.classList.add('is-ready');
 }

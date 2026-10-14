@@ -6,3 +6,5 @@ dist
 .Spotlight-V100
 .Trashes
 Extension Atelier
+__pycache__/
+*.pyc
